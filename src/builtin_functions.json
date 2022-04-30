@@ -1,0 +1,19 @@
+{
+    {
+        "os.read": {
+            "os_read",
+            {
+            { "template<class T, std::enable_if_t<std::is_integral<T>::value, bool> = true>\nvoid os_read(T & x);", "template<class T, class...Args, std::enable_if_t<std::is_integral<T>::value, bool> = true>\nvoid os_read(T & x, Args&...args) {
+    os_read(x);
+    os_read(args...);
+})"}, {R"(template<class T, class...Args, std::enable_if_t<std::is_integral<T>::value, bool> = true>
+void read(T & x, Args&...args);)", R"(template<class T, std::enable_if_t<std::is_integral<T>::value, bool> = true>
+void os_read(T & x) {
+    x = 0;
+    bool f = false;
+    char c = getchar();
+    while (!isdigit(c)) f |= c == '-', c = getchar();
+    while (isdigit(c)) x = (x << 3) + (x << 1) + (c ^ 48), c = getchar();
+    x = (f ? -x : x);
+})"}}, {"<cstdio>", "<type_traits>"}}}
+}

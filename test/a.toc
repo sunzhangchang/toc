@@ -1,0 +1,120 @@
+import <iostream>
+import <algorithm>
+
+#define fre(NAME) freopen(#NAME".in", "r", stdin); freopen(#NAME".out", "w", stdout)
+
+const usize N = 1e3 + 10;
+
+const i32 dx[] = {0, 0, -1, 1};
+const i32 dy[] = {-1, 1, 0, 0};
+
+usize n, m, K;
+global : i32 a[N][N], f[N][N]; // "global:" is optional in this version.
+global : Vec<i32> v[N][N];
+global : Map<Vec<i32>, i32> mp;
+global : i64 ans;
+
+fun dfs(i32 x, i32 y, i32 c) -> void {
+    f[x][y] = c;
+    for (i32 i = 0; i < 4; ++ i) {
+        let xx = x + dx[i];
+        let yy = y + dy[i];
+        if (xx <= 0 || xx > n || yy <= 0 || yy > m) {
+            continue;
+        }
+        if (a[xx][yy] || f[xx][yy]) {
+            continue;
+        }
+        dfs(xx, yy, c);
+    }
+}
+
+fun solve() -> void {
+    os.readInt(n, m, K);
+    for (u32 i = 1; i <= n; ++ i) {
+        for (u32 j = 1; j <= m; ++ j) {
+            os.readInt(a[i][j]);
+        }
+    }
+    let col = i32{0};
+    for (u32 i = 1; i <= n; ++ i) {
+        for (u32 j = 1; j <= m; ++ j) {
+            if (!a[i][j] && !f[i][j]) {
+                dfs(i, j, ++ col);
+            }
+        }
+    }
+    for (u32 i = 1; i <= n; ++ i) {
+        for (u32 j = 1; j <= m; ++ j) {
+            if (!a[i][j]) {
+                continue;
+            }
+            let u = Vec<int>{};
+            for (u32 k = 0; k < 4; ++ k) {
+                let x = i + dx[k];
+                let y = j + dy[k];
+                if (f[x][y]) {
+                    u.emplace_back(f[x][y]);
+                }
+            }
+            std::sort(u.begin(), u.end());
+            for (usize k = 0; k < u.size(); ++ k) {
+                if (k == 0 || u[k] != u[k - 1]) {
+                    v[i][j].emplace_back(u[k]);
+                }
+            }
+            let o = (1 << v[i][j].size());
+            for (u32 s = 1; s < o; ++ s) {
+                let w = Vec<int>{};
+                w.emplace_back(a[i][j]);
+                for (usize k = 0; k < v[i][j].size(); ++ k) {
+                    if (s >> k & 1) {
+                        w.emplace_back(v[i][j][k]);
+                    }
+                    ans += ((w.size() & 1) ? -1 : 1) * mp[w];
+                    ++ mp[w];
+                }
+            }
+            (lambda() {
+                if (i > 1 && a[i][j] == a[i - 1][j]) {
+                    ++ ans;
+                    for (readonly x : v[i][j]) {
+                        for (readonly y : v[i - 1][j]) {
+                            if (x == y) {
+                                -- ans;
+                                return;
+                            }
+                        }
+                    }
+                }
+            })();
+            (lambda() {
+                if (j > 1 && a[i][j] == a[i][j - 1]) {
+                    ++ ans;
+                    for (readonly x : v[i][j]) {
+                        for (readonly y : v[i][j - 1]) {
+                            if (x == y) {
+                                -- ans;
+                                return;
+                            }
+                        }
+                    }
+                }
+            })();
+        }
+    }
+    os.println(ans);
+}
+
+fun main() -> i32 {
+    fre(link);
+    let T = u32{1};
+    String a;
+    std::cin >> a;
+    conster b = 1;
+    // os.readInt(T);
+    while (T --) {
+        solve();
+    }
+    return 0;
+}
