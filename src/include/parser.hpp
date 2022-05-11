@@ -44,8 +44,15 @@ namespace toc {
         {"HashMap", {"__gnu_pbds::gp_hash_table", {"<ext/pb_ds/hash_policy.hpp>", "<ext/pb_ds/assoc_container.hpp>"}}},
     };
 
+    struct BuiltinFunciont {
+        string name;
+        small_vector<std::pair<string, string>, 8> main;
+        small_vector<string, 16> deps;
+        small_vector<string, 16> headers;
+    };
+
     // todo: Replication elimination 复制消除
-    const flat_map<string, std::tuple<string, small_vector<std::pair<string, string>, 8>, small_vector<string, 16>>> builtin_function = {
+    const flat_map<string, BuiltinFunciont> builtin_funcs = {
         {
             "os.readInt",
             {
@@ -53,14 +60,6 @@ namespace toc {
                 {
                     {
                         "template<class T, std::enable_if_t<std::is_integral<T>::value, bool> = true> void os_read_int(T & x);",
-                        "template<class T, class...Args, std::enable_if_t<std::is_integral<T>::value, bool> = true>\n"
-                        "void os_read_int(T & x, Args&...args) {\n"
-                        "    os_read_int(x);\n"
-                        "    os_read_int(args...);\n"
-                        "}"
-                    },
-                    {
-                        "template<class T, class...Args, std::enable_if_t<std::is_integral<T>::value, bool> = true> void read(T & x, Args&...args);",
                         "template<class T, std::enable_if_t<std::is_integral<T>::value, bool> = true>\n"
                         "void os_read_int(T & x) {\n"
                         "    x = 0;\n"
@@ -70,8 +69,17 @@ namespace toc {
                         "    while (isdigit(c)) x = (x << 3) + (x << 1) + (c ^ 48), c = getchar();\n"
                         "    x = (f ? -x : x);\n"
                         "}"
+                    },
+                    {
+                        "template<class T, class...Args, std::enable_if_t<std::is_integral<T>::value, bool> = true> void os_read_int(T & x, Args&...args);",
+                        "template<class T, class...Args, std::enable_if_t<std::is_integral<T>::value, bool> = true>\n"
+                        "void os_read_int(T & x, Args&...args) {\n"
+                        "    os_read_int(x);\n"
+                        "    os_read_int(args...);\n"
+                        "}"
                     }
                 },
+                {},
                 {"<cstdio>", "<type_traits>"}
             }
         },
@@ -90,6 +98,7 @@ namespace toc {
                         "}"
                     },
                 },
+                {},
                 {"<cstdio>", "<type_traits>"}
             }
         },
@@ -107,6 +116,7 @@ namespace toc {
                         "}"
                     },
                 },
+                {"os.print"},
                 {"<cstdio>", "<type_traits>"}
             }
         },
@@ -124,11 +134,15 @@ namespace toc {
                         "}"
                     },
                 },
+                {"os.print"},
                 {"<cstdio>", "<type_traits>"}
             }
         },
     };
 
+    flat_set<string> refs_builtin_funcs;
+
+    // ! At present, the parser is weak.
     class Parser {
         string code;
         string::iterator st, ed;
@@ -136,7 +150,7 @@ namespace toc {
         int block_level = 0;
 
         flat_set<string> included;
-        flat_set<std::pair<string, string>> insert_function;
+        flat_set<std::pair<string, string>> referenced_funcs;
 
     public:
         Parser() = default;
@@ -329,17 +343,49 @@ namespace toc {
             return (st == code.begin()) || (*std::prev(st) == '\n') || (*std::prev(st) == '\r');
         }
 
-        bool match_precompile() {
-            if (!is_begin_of_line()) {
-                return false;
+        std::pair<bool, string> parse_header_no(string::iterator & s, string::iterator & e) {
+            Whitespaces_no();
+            string res;
+            if (match_symbol_no("<").first) {
+                res = "<";
+                while (true) {
+                    if (match_symbol_no(">").first) {
+                        return {true, res + ">"};
+                    }
+                    res += *s;
+                    ++ s;
+                }
             }
+            return {false, res};
+        }
 
+        std::pair<bool, string> parse_header_no() {
+            return parse_header_no(st, ed);
+        }
+
+        bool parse_header() {
+            auto res = parse_header_no(st, ed);
+            if (res.first) {
+                result += res.second;
+            }
+            return res.first;
+        }
+
+        bool Precompile() {
+            Whitespaces_no();
             if (match_symbol_no("#").first) {
                 logger::info("Parsing precompile command.");
+                Whitespaces();
                 if (match_token_no("include").first) {
                     logger::warn("Please use \"import <somthing>\" instead of \"#include <something>\"!");
                     Whitespaces();
-                    included.emplace(match_to_eol_no());
+                    included.emplace(parse_header_no().second);
+                    if (match_eol_no().first) {
+                        return true;
+                    } else {
+                        logger::error("Parsing include pre-compile command failed.");
+                        return false;
+                    }
                 } else {
                     result += '#';
                     match_to_eol();
@@ -348,16 +394,16 @@ namespace toc {
             return false;
         }
 
-        bool match_import() {
-            if (!is_begin_of_line()) {
-                return false;
-            }
-
+        bool Import() {
+            Whitespaces_no();
             if (match_token_no("import").first) {
                 logger::info("Parsing import.");
                 // result += "#include";
-                Whitespaces();
-                included.emplace(match_to_eol_no());
+                Whitespaces_no();
+                included.emplace(parse_header_no().second);
+                while ((*st == ' ') || (*st == '\t')) {
+                    ++ st;
+                }
                 return true;
             }
             return false;
@@ -462,7 +508,12 @@ namespace toc {
         }
 
         bool Fun() {
+            debug(*st);
+            debug(*(st + 1));
             Whitespaces();
+            debug(*st);
+            debug(*(st + 1));
+            debug(result);
             if (match_token_no("fun").first) {
                 // logger::info("Parsing function.");
                 result += "auto"; // todo: automatically detect function type
@@ -527,11 +578,18 @@ namespace toc {
 
         bool statement() {
             //            logger::info("Parsing statement.");
-            if (match_precompile()) {
+            if (Precompile()) {
                 match_eol();
                 return true;
-            } else if (match_import()) {
-                match_eol();
+            } else if (Import()) {
+                if (match_eol()) {
+                    logger::info(string("+++++++++++++ ") + *st + "==");
+                    debug(*(st + 1));
+                    return true;
+                } else {
+                    logger::error("Parsing import failed.");
+                    return false;
+                }
                 return true;
             } else if (Fun()) {
                 match_eol();
@@ -573,20 +631,44 @@ namespace toc {
             return {false, ""};
         }
 
-        // todo: Replication elimination 复制消除
-        void replace_builtin_function() {
+        void ins_func(const BuiltinFunciont & func) {
+            for (const auto & dep : func.deps) {
+                ins_func(builtin_funcs.at(dep));
+            }
+            for (const auto & fn : func.main) {
+                referenced_funcs.emplace(fn.first, fn.second);
+            }
+            for (const auto & x : func.headers) {
+                included.emplace(x);
+            }
+        }
+
+        void replace_builtin_functions() {
             logger::info("Replacing builtin function");
-            for (const auto & func : builtin_function) {
-                auto expr = verex::verex().add((string{"(?<=^|(?<=\\W))("} + func.first + string{")(?=\\W)"}).toStdString()).search_global().search_one_line(false);
-                //                if (expr.test(result.toStdString())) {
-                result = expr.replace(result.toStdString(), (string{"__toc_builtin::"} + std::get<0>(func.second)).toStdString());
-                for (const auto & fn : std::get<1>(func.second)) {
-                    insert_function.emplace(fn.first, fn.second);
+            for (const auto & func : builtin_funcs) {
+                string outter = func.first;
+                // todo: regex
+                auto pos = outter.find(".", 0);
+                while (pos != string::npos) {
+                    outter.replace(pos, 1, "\\.");
+                    pos += 2;
+                    if (pos >= outter.size()) {
+                        break;
+                    }
+                    pos = outter.find(".", pos);
                 }
-                for (const auto & x : std::get<2>(func.second)) {
-                    included.emplace(x);
+                // auto t = verex::verex().add(R"(\.)").search_global().search_one_line(false);
+                // std::cout << t << std::endl;
+                // outter = t.replace(outter.toStdString(), "\\.");
+                // std::cerr << outter << std::endl;
+                auto expr = verex::verex().add((string{"(?<=^|(?<=\\W))("} + outter + string{")(?=\\W)"}).toStdString()).search_global().search_one_line(false);
+                if (expr.test(result.toStdString())) {
+                    result = expr.replace(result.toStdString(), (string{"__toc_builtin::"} + func.second.name).toStdString());
+                    refs_builtin_funcs.emplace(func.first);
                 }
-                //                }
+            }
+            for (const auto & outter : refs_builtin_funcs) {
+                ins_func(builtin_funcs.at(outter));
             }
         }
 
@@ -603,6 +685,7 @@ namespace toc {
             }
         }
 
+        // todo: Replication elimination 复制消除
         void insert_includes() {
             logger::info("Insert includes");
             string inc = "";
@@ -614,15 +697,20 @@ namespace toc {
 
         void insert_functions() {
             logger::info("Insert builtin functions");
+            if (referenced_funcs.size() == 0) {
+                logger::info("No builtin functions are referenced.");
+                return;
+            }
             string inc = "namespace __toc_builtin {\n";
             const string tab = "    ";
-            for (const auto & func : insert_function) {
+            for (const auto & func : referenced_funcs) {
                 inc += folly::trimWhitespace(func.first).toString() + "\n";
             }
             inc += '\n';
-            for (const auto & func : insert_function) {
+            for (const auto & func : referenced_funcs) {
                 inc += folly::trimWhitespace(func.second).toString() + "\n\n";
             }
+            inc.pop_back();
             result = inc + "}\n\n" + result;
         }
 
@@ -644,7 +732,7 @@ namespace toc {
                     logger::error("Parsing statement error!");
                 }
             }
-            replace_builtin_function();
+            replace_builtin_functions();
             insert_functions();
             replace_builtin_type();
             insert_includes();
