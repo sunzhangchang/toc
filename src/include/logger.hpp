@@ -35,6 +35,8 @@ namespace toc {
 
 } // namespace toc
 
+#define DEBUG
+
 #ifdef DEBUG
 #define debug(str) toc::logger::info(string{"------------------ "} + str)
 #else

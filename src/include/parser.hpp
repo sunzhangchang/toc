@@ -345,15 +345,22 @@ namespace toc {
 
         std::pair<bool, string> parse_header_no(string::iterator & s, string::iterator & e) {
             Whitespaces_no();
+            string res;
             if (match_symbol_no("<").first) {
-                string res = "<";
-                if (match_symbol_no(">").first) {
-                    return {true, res + ">"};
+                res = "<";
+                while (true) {
+                    if (match_symbol_no(">").first) {
+                        return {true, res + ">"};
+                    }
+                    res += *s;
+                    ++ s;
                 }
-                res += *s;
-                ++ s;
             }
             return {false, res};
+        }
+
+        std::pair<bool, string> parse_header_no() {
+            return parse_header_no(st, ed);
         }
 
         bool parse_header() {
@@ -365,7 +372,7 @@ namespace toc {
         }
 
         bool Precompile() {
-            Whitespaces();
+            Whitespaces_no();
             if (match_symbol_no("#").first) {
                 logger::info("Parsing precompile command.");
                 Whitespaces();
@@ -373,6 +380,12 @@ namespace toc {
                     logger::warn("Please use \"import <somthing>\" instead of \"#include <something>\"!");
                     Whitespaces();
                     included.emplace(parse_header_no().second);
+                    if (match_eol_no().first) {
+                        return true;
+                    } else {
+                        logger::error("Parsing include pre-compile command failed.");
+                        return false;
+                    }
                 } else {
                     result += '#';
                     match_to_eol();
@@ -382,12 +395,15 @@ namespace toc {
         }
 
         bool Import() {
-            Whitespaces();
+            Whitespaces_no();
             if (match_token_no("import").first) {
                 logger::info("Parsing import.");
                 // result += "#include";
-                Whitespaces();
+                Whitespaces_no();
                 included.emplace(parse_header_no().second);
+                while ((*st == ' ') || (*st == '\t')) {
+                    ++ st;
+                }
                 return true;
             }
             return false;
@@ -492,7 +508,12 @@ namespace toc {
         }
 
         bool Fun() {
+            debug(*st);
+            debug(*(st + 1));
             Whitespaces();
+            debug(*st);
+            debug(*(st + 1));
+            debug(result);
             if (match_token_no("fun").first) {
                 // logger::info("Parsing function.");
                 result += "auto"; // todo: automatically detect function type
@@ -561,7 +582,14 @@ namespace toc {
                 match_eol();
                 return true;
             } else if (Import()) {
-                match_eol();
+                if (match_eol()) {
+                    logger::info(string("+++++++++++++ ") + *st + "==");
+                    debug(*(st + 1));
+                    return true;
+                } else {
+                    logger::error("Parsing import failed.");
+                    return false;
+                }
                 return true;
             } else if (Fun()) {
                 match_eol();
