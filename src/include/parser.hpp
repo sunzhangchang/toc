@@ -59,7 +59,7 @@ namespace toc {
                 "os_read_int",
                 {
                     {
-                        "template<class T, class...Args, std::enable_if_t<std::is_integral<T>::value, bool> = true> void read(T & x, Args&...args);",
+                        "template<class T, std::enable_if_t<std::is_integral<T>::value, bool> = true> void os_read_int(T & x);",
                         "template<class T, std::enable_if_t<std::is_integral<T>::value, bool> = true>\n"
                         "void os_read_int(T & x) {\n"
                         "    x = 0;\n"
@@ -71,7 +71,7 @@ namespace toc {
                         "}"
                     },
                     {
-                        "template<class T, std::enable_if_t<std::is_integral<T>::value, bool> = true> void os_read_int(T & x);",
+                        "template<class T, class...Args, std::enable_if_t<std::is_integral<T>::value, bool> = true> void os_read_int(T & x, Args&...args);",
                         "template<class T, class...Args, std::enable_if_t<std::is_integral<T>::value, bool> = true>\n"
                         "void os_read_int(T & x, Args&...args) {\n"
                         "    os_read_int(x);\n"
@@ -343,17 +343,36 @@ namespace toc {
             return (st == code.begin()) || (*std::prev(st) == '\n') || (*std::prev(st) == '\r');
         }
 
-        bool match_precompile() {
-            if (!is_begin_of_line()) {
-                return false;
+        std::pair<bool, string> parse_header_no(string::iterator & s, string::iterator & e) {
+            Whitespaces_no();
+            if (match_symbol_no("<").first) {
+                string res = "<";
+                if (match_symbol_no(">").first) {
+                    return {true, res + ">"};
+                }
+                res += *s;
+                ++ s;
             }
+            return {false, res};
+        }
 
+        bool parse_header() {
+            auto res = parse_header_no(st, ed);
+            if (res.first) {
+                result += res.second;
+            }
+            return res.first;
+        }
+
+        bool Precompile() {
+            Whitespaces();
             if (match_symbol_no("#").first) {
                 logger::info("Parsing precompile command.");
+                Whitespaces();
                 if (match_token_no("include").first) {
                     logger::warn("Please use \"import <somthing>\" instead of \"#include <something>\"!");
                     Whitespaces();
-                    included.emplace(match_to_eol_no());
+                    included.emplace(parse_header_no().second);
                 } else {
                     result += '#';
                     match_to_eol();
@@ -362,16 +381,13 @@ namespace toc {
             return false;
         }
 
-        bool match_import() {
-            if (!is_begin_of_line()) {
-                return false;
-            }
-
+        bool Import() {
+            Whitespaces();
             if (match_token_no("import").first) {
                 logger::info("Parsing import.");
                 // result += "#include";
                 Whitespaces();
-                included.emplace(match_to_eol_no());
+                included.emplace(parse_header_no().second);
                 return true;
             }
             return false;
@@ -541,10 +557,10 @@ namespace toc {
 
         bool statement() {
             //            logger::info("Parsing statement.");
-            if (match_precompile()) {
+            if (Precompile()) {
                 match_eol();
                 return true;
-            } else if (match_import()) {
+            } else if (Import()) {
                 match_eol();
                 return true;
             } else if (Fun()) {
